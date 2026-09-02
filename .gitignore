@@ -1,0 +1,6 @@
+game
+game.exe
+*.o
+*.obj
+raylib/
+.DS_Store

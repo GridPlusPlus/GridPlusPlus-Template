@@ -1,0 +1,31 @@
+name: build-wasm
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: gridpp
+    container:
+      image: gridpp-builder:latest
+      options: --memory=512m --cpus=1 --pids-limit=256 -v gridpp_builds:/srv/builds
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          mkdir -p site
+          emcc main.cpp -std=c++17 \
+            -I"$RAYLIB_WEB/include" -L"$RAYLIB_WEB/lib" -lraylib \
+            -s USE_GLFW=3 -s ASYNCIFY -s ALLOW_MEMORY_GROWTH=1 \
+            --shell-file "$GRIDPP/shell.html" \
+            -o site/index.html
+
+      - name: Publish
+        run: |
+          SHORT=$(echo "$GITHUB_SHA" | cut -c1-8)
+          DEST="/srv/builds/${GITHUB_ACTOR}/${SHORT}"
+          mkdir -p "$DEST"
+          cp site/index.html site/index.js site/index.wasm "$DEST/"
+          echo "公開連結：http://<本機IP>:8080/${GITHUB_ACTOR}/${SHORT}/"
