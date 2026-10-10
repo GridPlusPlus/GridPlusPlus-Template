@@ -1,25 +1,31 @@
-# Grid++ Template
+# Grid++ 遊戲範本
 
-Fork 這個 repository，再 clone 自己的 fork。請先依照 [Grid++ 文件](https://gridplusplus.github.io/GridPlusPlus/01-getting-started/01-installation/)安裝 raylib。
+這是一個空白的 Grid++ 專案，用來做屬於你自己的遊戲。還沒用過 Grid++ 的話，建議先跟著文件的「從零做出 Pac-Man」教學做一次。
 
-## 編譯
+- Grid++ 文件：<https://gridplusplus.github.io/GridPlusPlus/>
+- 取得專案、上傳作品的步驟：見文件第 1 章「開始使用」。
 
-Linux／WSL：
+## 執行
+
+在這個資料夾裡執行（Windows 請在 WSL 的 Ubuntu 中執行）：
+
+WSL / Linux：
 
 ```bash
 g++ -std=c++17 main.cpp -o game -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+./game
 ```
 
 macOS：
 
 ```bash
 g++ -std=c++17 main.cpp -o game $(pkg-config --cflags --libs raylib)
+./game
 ```
 
-Windows／MinGW-w64：
+## 檔案
 
-```bash
-g++ -std=c++17 main.cpp -o game.exe -Iraylib/include -Lraylib/lib -lraylib -lgdi32 -lwinmm
-```
-
-需要新版 Grid++ 時，在 GitHub fork 首頁按 **Sync fork**。推送至課程 Gitea 後，Actions 會自動建立 WASM 網頁。
+| 檔案 | 用途 |
+|---|---|
+| `main.cpp` | 你的遊戲程式，從這裡開始寫。 |
+| 其他 `.h` 檔 | Grid++ 函式庫，不需要修改。 |
