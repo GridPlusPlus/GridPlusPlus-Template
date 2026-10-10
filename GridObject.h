@@ -1,186 +1,223 @@
 /** @file GridObject.h
- *  @brief 定義網格物件與函式版網格物件。
+ *  @brief 定義網格物件 handler 與實體資料。
  */
 #ifndef GRID_PLUS_PLUS_GRID_OBJECT_H_
 #define GRID_PLUS_PLUS_GRID_OBJECT_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "GridValue.h"
 #include "raylib.h"
 
 namespace gridpp {
 
-class GridEngine;
+class GameEngine;
+class GridObject;
 
-/** 遊戲世界中會更新、碰撞與繪製的物件。 */
+/** @cond */
+class GameEngineImpl;
+
+using GridObjectCallback = void (*)(GameEngine engine, GridObject self);
+using CollisionCallback = void (*)(GameEngine engine, GridObject self, GridObject other);
+
+enum class GridObjectType {
+    Image,
+    Square,
+    Circle,
+    Triangle,
+    Pentagon,
+    Star,
+};
+
+class GridObjectImpl {
+public:
+    GridObjectImpl(const GridObjectImpl&) = default;
+    GridObjectImpl& operator=(const GridObjectImpl&) = default;
+
+private:
+    friend class GameEngineImpl;
+    friend class GridObject;
+
+    explicit GridObjectImpl(std::string image);
+    GridObjectImpl(GridObjectType type, int x, int y, int size, Color color);
+
+    GridObjectType type_ = GridObjectType::Image;
+    std::string image_;
+    int x_ = 0;
+    int y_ = 0;
+    int size_ = 0;
+    int direction_ = 0;
+    Color color_ = WHITE;
+    int layer_ = 0;
+    bool visible_ = true;
+    bool initialized_ = false;
+    bool active_ = false;
+    GridObjectCallback init_ = nullptr;
+    GridObjectCallback update_ = nullptr;
+    CollisionCallback collide_ = nullptr;
+    GridValueStore values_;
+};
+/** @endcond */
+
+/**
+ * 操作遊戲世界中單一網格物件的 handler。
+ *
+ * 複製 handler 不會複製物件；所有複本仍指向同一個遊戲實體。物件被移除或 GameEngine
+ * 銷毀後，可以用 exists() 檢查 handler 是否仍有效。除 exists() 之外，對失效 handler
+ * 呼叫其他函式會拋出 std::runtime_error。
+ */
 class GridObject {
 public:
+    /** 建立不指向任何物件的 handler。 */
     GridObject() = default;
-    GridObject(std::string asset_name, int x, int y);
-    /** 複本不屬於任何 GridEngine。 */
-    GridObject(const GridObject& other);
-    GridObject& operator=(const GridObject& other) = delete;
-    virtual ~GridObject() = default;
 
-    /** 物件加入引擎後呼叫一次。 */
-    virtual void OnSpawn();
+    /** @return handler 是否仍指向存在的物件。 */
+    bool exists() const;
 
-    /** 每幀更新時呼叫。 */
-    virtual void OnUpdate();
+    /** 從引擎移除物件；呼叫後所有指向它的 handler 都會失效。 */
+    void remove();
 
-    /**
-     * 與另一個可見物件位於同一個有效網格座標時呼叫。
-     * @param other 與此物件碰撞的借用指標。
-     */
-    virtual void OnCollide(GridObject* other);
+    /** @return 一個擁有獨立狀態、callback 與新 handler 的物件複本。 */
+    GridObject deepCopy() const;
 
-    /**
-     * 繪製物件。預設使用物件的素材、方向與顏色繪製所在格。
-     * @param engine 所屬引擎的借用指標。
-     */
-    virtual void Render(GridEngine* engine);
-
+    /** @return 物件的網格 x 座標。 */
     int x() const;
+
+    /** @return 物件的網格 y 座標。 */
     int y() const;
-    void set_x(int x);
-    void set_y(int y);
-    void Move(int dx, int dy);
 
-    const std::string& asset_name() const;
-    void set_asset_name(const std::string& asset_name);
+    /** 將物件移到指定網格座標。 */
+    void setPosition(int x, int y);
 
-    /** 可用於碰撞時辨識物件。 */
-    const std::string& tag() const;
-    void set_tag(const std::string& tag);
+    /** 將物件相對移動 dx 欄、dy 列。 */
+    void move(int dx, int dy);
 
+    /**
+     * @return 圖片物件的素材名稱。
+     * @throws std::runtime_error 若此 handler 指向幾何形狀。
+     */
+    std::string image() const;
+
+    /**
+     * 設定圖片物件使用的素材名稱。
+     * @throws std::runtime_error 若此 handler 指向幾何形狀。
+     */
+    void setImage(const std::string& image);
+
+    /** @return 繪製方向，0 到 3 分別表示逆時針旋轉 0°、90°、180° 與 270°。 */
     int direction() const;
-    /** 每增加 1 逆時針旋轉 90 度；輸入會正規化至 0 到 3。 */
-    void set_direction(int direction);
 
-    Color tint() const;
-    void set_tint(Color tint);
+    /** 設定繪製方向；輸入會正規化至 0 到 3。 */
+    void setDirection(int direction);
 
-    int z_index() const;
-    /** 數值越大越晚繪製；相同數值保持 Spawn 順序。 */
-    void set_z_index(int z_index);
+    /** @return 圖片 tint 或幾何形狀的顏色。 */
+    Color color() const;
 
+    /** 設定圖片 tint 或幾何形狀的顏色。 */
+    void setColor(Color color);
+
+    /** @return 物件的繪製層級。 */
+    int layer() const;
+
+    /** 設定繪製層級；數值越大越晚繪製，相同層級保持建立順序。 */
+    void setLayer(int layer);
+
+    /** @return 物件是否可見。 */
     bool visible() const;
-    /** 隱藏的物件仍會更新，但不會繪製或參與碰撞。 */
-    void set_visible(bool visible);
 
-    /** @return 所屬引擎的借用指標；尚未 Spawn 時為 nullptr。 */
-    GridEngine* engine() const;
+    /** 顯示物件。 */
+    void show();
 
+    /** 隱藏物件；隱藏期間仍會更新，但不會繪製或參與碰撞。 */
+    void hide();
+
+    /**
+     * @name 自訂狀態
+     * set() 會拒絕以不同類型覆寫已存在的 key；get() 使用的類型也必須與儲存類型相同。
+     */
+    ///@{
+    /** 以 key 儲存整數；int 與 long long 都以 long long 保存。 */
+    void set(const std::string& key, int value);
+    /** 以 key 儲存長整數。 */
+    void set(const std::string& key, long long value);
+    /** 以 key 儲存浮點數。 */
+    void set(const std::string& key, double value);
+    /** 以 key 儲存布林值。 */
+    void set(const std::string& key, bool value);
+    /** 以 key 儲存字串。 */
+    void set(const std::string& key, const std::string& value);
+    /** 以 key 儲存 C 字串；內部會複製為 std::string。 */
+    void set(const std::string& key, const char* value);
+
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為預設值並回傳 1。
+     * @throws std::runtime_error 若類型不同，或儲存的整數無法容納於 int。
+     */
+    int get(const std::string& key, int& value) const;
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為預設值並回傳 1。
+     * @throws std::runtime_error 若取值類型與儲存類型不同。
+     */
+    int get(const std::string& key, long long& value) const;
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為預設值並回傳 1。
+     * @throws std::runtime_error 若取值類型與儲存類型不同。
+     */
+    int get(const std::string& key, double& value) const;
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為預設值並回傳 1。
+     * @throws std::runtime_error 若取值類型與儲存類型不同。
+     */
+    int get(const std::string& key, bool& value) const;
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為預設值並回傳 1。
+     * @throws std::runtime_error 若取值類型與儲存類型不同。
+     */
+    int get(const std::string& key, std::string& value) const;
+
+    /** 以 key 儲存指定類型的 vector。 */
+    template <typename T>
+    void set(const std::string& key, const std::vector<T>& value);
+
+    /**
+     * @return 找到 key 時為 0；找不到時將 value 清為空 vector 並回傳 1。
+     * @throws std::runtime_error 若取值類型與儲存類型不同。
+     */
+    template <typename T>
+    int get(const std::string& key, std::vector<T>& value) const;
+    ///@}
+
+    /** 取代初始化 callback；若物件已初始化，新函式不會自動補呼叫。 */
+    void setInitFunction(GridObjectCallback function);
+
+    /** 取代每幀更新 callback。 */
+    void setUpdateFunction(GridObjectCallback function);
+
+    /** 取代碰撞 callback。 */
+    void setCollideFunction(CollisionCallback function);
+
+    /** @cond */
 private:
-    friend class GridEngine;
+    friend class GameEngineImpl;
 
-    void set_engine(GridEngine* engine);
+    GridObject(std::weak_ptr<GameEngineImpl> engine, std::uint64_t id);
+    std::shared_ptr<GameEngineImpl> lockEngine() const;
 
-    int grid_x_ = 0;
-    int grid_y_ = 0;
-
-    std::string asset_name_;
-    std::string tag_;
-
-    int direction_ = 0;
-    Color tint_ = WHITE;
-    int z_index_ = 0;
-    bool visible_ = true;
-
-    GridEngine* engine_ = nullptr;
+    std::weak_ptr<GameEngineImpl> engine_;
+    std::uint64_t id_ = 0;
+    /** @endcond */
 };
 
-/** 使用函式指標提供更新與碰撞行為的網格物件。 */
-class CallbackGridObject : public GridObject {
-public:
-    using UpdateFn = void (*)(GridObject* self);
-    using CollideFn = void (*)(GridObject* self, GridObject* other);
+/** @cond */
+inline GridObjectImpl::GridObjectImpl(std::string image) : image_(std::move(image)) {}
 
-    /** update 與 collide 可以是 nullptr。 */
-    CallbackGridObject(std::string asset_name, int x, int y, UpdateFn update, CollideFn collide = nullptr);
-
-    void OnUpdate() override;
-    void OnCollide(GridObject* other) override;
-
-private:
-    UpdateFn update_;
-    CollideFn collide_;
-};
-
-// Inline definitions
-
-inline GridObject::GridObject(std::string asset_name, int x, int y)
-    : grid_x_(x), grid_y_(y), asset_name_(std::move(asset_name)) {}
-
-inline GridObject::GridObject(const GridObject& other)
-    : grid_x_(other.grid_x_),
-      grid_y_(other.grid_y_),
-      asset_name_(other.asset_name_),
-      tag_(other.tag_),
-      direction_(other.direction_),
-      tint_(other.tint_),
-      z_index_(other.z_index_),
-      visible_(other.visible_),
-      engine_(nullptr) {}
-
-inline void GridObject::OnSpawn() {}
-
-inline void GridObject::OnUpdate() {}
-
-inline void GridObject::OnCollide(GridObject* other) { (void)other; }
-
-inline int GridObject::x() const { return grid_x_; }
-
-inline int GridObject::y() const { return grid_y_; }
-
-inline void GridObject::set_x(int x) { grid_x_ = x; }
-
-inline void GridObject::set_y(int y) { grid_y_ = y; }
-
-inline void GridObject::Move(int dx, int dy) {
-    grid_x_ += dx;
-    grid_y_ += dy;
-}
-
-inline const std::string& GridObject::asset_name() const { return asset_name_; }
-
-inline void GridObject::set_asset_name(const std::string& asset_name) { asset_name_ = asset_name; }
-
-inline const std::string& GridObject::tag() const { return tag_; }
-
-inline void GridObject::set_tag(const std::string& tag) { tag_ = tag; }
-
-inline int GridObject::direction() const { return direction_; }
-
-inline void GridObject::set_direction(int direction) { direction_ = ((direction % 4) + 4) % 4; }
-
-inline Color GridObject::tint() const { return tint_; }
-
-inline void GridObject::set_tint(Color tint) { tint_ = tint; }
-
-inline int GridObject::z_index() const { return z_index_; }
-
-inline void GridObject::set_z_index(int z_index) { z_index_ = z_index; }
-
-inline bool GridObject::visible() const { return visible_; }
-
-inline void GridObject::set_visible(bool visible) { visible_ = visible; }
-
-inline GridEngine* GridObject::engine() const { return engine_; }
-
-inline void GridObject::set_engine(GridEngine* engine) { engine_ = engine; }
-
-inline CallbackGridObject::CallbackGridObject(std::string asset_name, int x, int y, UpdateFn update, CollideFn collide)
-    : GridObject(std::move(asset_name), x, y), update_(update), collide_(collide) {}
-
-inline void CallbackGridObject::OnUpdate() {
-    if (update_ != nullptr) update_(this);
-}
-
-inline void CallbackGridObject::OnCollide(GridObject* other) {
-    if (collide_ != nullptr) collide_(this, other);
-}
+inline GridObjectImpl::GridObjectImpl(GridObjectType type, int x, int y, int size, Color color)
+    : type_(type), x_(x), y_(y), size_(size), color_(color) {}
+/** @endcond */
 
 }  // namespace gridpp
 
